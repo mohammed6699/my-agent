@@ -1,0 +1,27 @@
+{
+  "name": "cluade-agent",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "@langchain/core": "^1.2.3",
+    "boxen": "^8.0.1",
+    "chalk": "^6.0.0",
+    "dotenv": "^17.4.2",
+    "gpt-tokenizer": "^3.4.0",
+    "groq-sdk": "^1.4.0",
+    "langchain": "^1.5.4",
+    "ora": "^9.4.1",
+    "path": "^0.12.7",
+    "pdf-parse": "^2.4.5",
+    "zod": "^4.4.3"
+  }
+}
