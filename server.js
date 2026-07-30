@@ -10,7 +10,7 @@ import { buildMessageWithFileContext } from './services/extractFiles.js';
 import boxen from 'boxen';
 import { LoadNCRfile } from './services/NCR-service.js';
 import { rl, sanitizeAssistantMessage, createChatCompletionWithFallback } from './services/aiClient.js'
-import { loadPRDFromArgs } from './services/PRD-service.js';
+import { loadPRDFromArgs, extractUserStories } from './services/PRD-service.js';
 
     
     const askQuestion = (query) => new Promise((resolve) => rl.question(query, resolve));
@@ -74,6 +74,17 @@ async function runMyAgent(messages, maxIterations = 50){
     }
 
 }
+function parseUserStorySelection(input, stories) {
+    if (input.trim().toLowerCase() === 'all') {
+        return stories;
+    }
+    return input
+        .split(',')
+        .map(s => s.trim())
+        .map(s => parseInt(s, 10))
+        .filter(n => !isNaN(n) && n >= 1 && n <= stories.length)
+        .map(n => stories[n - 1]);
+}
 // handle pdr file work folow
 async function handlePRDWorkFlow(messages){
     const prdContent = await loadPRDFromArgs();
@@ -97,24 +108,26 @@ async function handlePRDWorkFlow(messages){
         console.log(chalk.yellow(`  -> ${story.description}`));
         console.log(chalk.yellow(`  Acceptance Criteria:\n${story.acceptanceCriteria.map(c => `    - ${c}`).join('\n')}`));
     }
-    // Ask the user something like: "Build all N stories? (yes/no)" using askQuestion  
-    const response = await askQuestion(boxen(chalk.green.bold('Build all N stories? (yes/no) '), {
-        padding: 1,
-        margin: 1,
-        borderStyle: 'round',
-        borderColor: 'blue',
-    }));
-    if (response.trim().toLowerCase() !== 'yes') {
-        console.log(chalk.yellow('Aborted by user.'));
-        return false;
+    const input = await askQuestion(
+    boxen(
+      chalk.yellow(
+        'Enter the number(s) of the stories you want to build (e.g., \"1,2,4\") or type \"all\" for all stories:'
+      ),
+      { padding: 1, margin: 1, borderStyle: 'round', borderColor: 'yellow' }
+    )
+  );
+    const orderedStories = parseUserStorySelection(input, userStories);
+    if (!orderedStories || orderedStories.length === 0) {
+    console.log(chalk.yellow('No valid stories selected — falling back to normal mode.'));
+    return false;
     }
-    // Create one blueprint task for EACH user story
-    for (const [idx, story] of userStories.entries()) {
-    console.log(chalk.cyan(`\nBuilding story ${idx + 1} of ${userStories.length}: ${story.title}`));
+    // Print numbered list (reuse your existing display loop, just add index numbers)
+for (const [idx, story] of orderedStories.entries()) {
+    console.log(chalk.cyan(`\nBuilding story ${idx + 1} of ${orderedStories.length}: ${story.title}`));
     const storyDetails = `Title: ${story.title}\nDescription: ${story.description}\nAcceptance Criteria:\n${story.acceptanceCriteria.map(c => `- ${c}`).join('\n')}`;
     const storyPrompt = idx === 0
-    ? getBlueprintPrompt(storyDetails)
-    : `Implement this additional feature:\n${storyDetails}`;
+        ? getBlueprintPrompt(storyDetails)
+        : `Implement this additional feature:\n${storyDetails}`;
     messages.push({ role: 'user', content: storyPrompt });
     const spinner = ora(`Building: ${story.title}`).start();
     const answer = await runMyAgent(messages);
@@ -122,7 +135,7 @@ async function handlePRDWorkFlow(messages){
     await saveSession(messages, getCurrentProjectPath());
     console.log(chalk.magenta.bold('Agent:'), chalk.green(answer));
 }
-    return true;
+return true;
 }
 async function main() {
     const priorMessages = await loadSession();
