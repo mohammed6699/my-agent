@@ -216,3 +216,17 @@ export async function loadSession() {
     return [];
   }
 }
+// function to manage .session file
+export async function archiveCurrentSession() {
+    try {
+        const exists = await fs.access(SESSION_FILE).then(() => true).catch(() => false);
+        if (!exists) return; // nothing to archive
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const archivePath = path.join(WORKSPACE_ROOT, `.session-archive-${timestamp}.json`);
+        await fs.rename(SESSION_FILE, archivePath);
+        console.log(chalk.gray(`Previous session archived to ${archivePath}`));
+    } catch (error) {
+        console.log(chalk.yellow(`Could not archive previous session: ${error.message}`));
+    }
+} 

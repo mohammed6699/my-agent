@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 import { executeTerminalCommands, generateFileTreeStructure, listFilesTool, readFileTool, writeFileContent } from './ai/schemas.js';
 import { getBlueprintPrompt, SYSTEM_INSTRUCTION } from './ai/prompts.js';
-import { createProjectSkeleton, listFiles, writeFileContentToDisk, readFile, getCurrentProjectPath, saveSession, loadSession } from './services/file-executer.js';
+import { createProjectSkeleton, listFiles, writeFileContentToDisk, readFile, getCurrentProjectPath, saveSession, loadSession, archiveCurrentSession } from './services/file-executer.js';
 import { executeCommand } from './services/commandExecutor.js';
 import chalk from 'chalk';
 import ora from 'ora';   
@@ -108,43 +108,50 @@ async function handlePRDWorkFlow(messages){
         console.log(chalk.yellow(`  -> ${story.description}`));
         console.log(chalk.yellow(`  Acceptance Criteria:\n${story.acceptanceCriteria.map(c => `    - ${c}`).join('\n')}`));
     }
-    const input = await askQuestion(
-    boxen(
-      chalk.yellow(
-        'Enter the number(s) of the stories you want to build (e.g., \"1,2,4\") or type \"all\" for all stories:'
-      ),
-      { padding: 1, margin: 1, borderStyle: 'round', borderColor: 'yellow' }
-    )
-  );
-    const orderedStories = parseUserStorySelection(input, userStories);
-    if (!orderedStories || orderedStories.length === 0) {
-    console.log(chalk.yellow('No valid stories selected — falling back to normal mode.'));
-    return false;
+    // Ask the user something like: "Build all N stories? (yes/no)" using askQuestion  
+    const input = await askQuestion(boxen(
+          chalk.yellow(
+            'Enter the number(s) of the stories you want to build (e.g., \"1,2,4\") or type \"all\" for all stories:'
+          ),
+          { padding: 1, margin: 1, borderStyle: 'round', borderColor: 'yellow' }
+        ));
+        const orderedStories = parseUserStorySelection(input, userStories);
+        if (!orderedStories || orderedStories.length === 0) {
+        console.log(chalk.yellow('No valid stories selected — falling back to normal mode.'));
+        return false;
+        }
+        // Print numbered list (reuse your existing display loop, just add index numbers)
+    for (const [idx, story] of orderedStories.entries()) {
+        console.log(chalk.cyan(`\nBuilding story ${idx + 1} of ${orderedStories.length}: ${story.title}`));
+        const storyDetails = `Title: ${story.title}\nDescription: ${story.description}\nAcceptance Criteria:\n${story.acceptanceCriteria.map(c => `- ${c}`).join('\n')}`;
+        const storyPrompt = idx === 0
+            ? getBlueprintPrompt(storyDetails)
+            : `Implement this additional feature:\n${storyDetails}`;
+        messages.push({ role: 'user', content: storyPrompt });
+        const spinner = ora(`Building: ${story.title}`).start();
+        const answer = await runMyAgent(messages);
+        spinner.stop();
+        await saveSession(messages, getCurrentProjectPath());
+        console.log(chalk.magenta.bold('Agent:'), chalk.green(answer));
     }
-    // Print numbered list (reuse your existing display loop, just add index numbers)
-for (const [idx, story] of orderedStories.entries()) {
-    console.log(chalk.cyan(`\nBuilding story ${idx + 1} of ${orderedStories.length}: ${story.title}`));
-    const storyDetails = `Title: ${story.title}\nDescription: ${story.description}\nAcceptance Criteria:\n${story.acceptanceCriteria.map(c => `- ${c}`).join('\n')}`;
-    const storyPrompt = idx === 0
-        ? getBlueprintPrompt(storyDetails)
-        : `Implement this additional feature:\n${storyDetails}`;
-    messages.push({ role: 'user', content: storyPrompt });
-    const spinner = ora(`Building: ${story.title}`).start();
-    const answer = await runMyAgent(messages);
-    spinner.stop();
-    await saveSession(messages, getCurrentProjectPath());
-    console.log(chalk.magenta.bold('Agent:'), chalk.green(answer));
-}
-return true;
+    return true;
 }
 async function main() {
     const priorMessages = await loadSession();
-    const messages = priorMessages.length > 0 ? priorMessages: [{ role: 'system', content: SYSTEM_INSTRUCTION }];
+    // Was a file explicitly provided THIS run? (not "is there an old session")
+    const prdRequested = process.argv.includes('--prd');
+    const ncrRequested = !!process.argv[2] && !prdRequested; // adjust to match however you detect NCR's positional arg
+    let messages;
+    if (prdRequested || ncrRequested) {
+        await archiveCurrentSession(); // safely preserve old work, never silently lost
+        messages = [{ role: 'system', content: SYSTEM_INSTRUCTION }]; // always start fresh
+    } else {
+        messages = priorMessages.length > 0 ? priorMessages : [{ role: 'system', content: SYSTEM_INSTRUCTION }];
+    }
     let isFirstTurn = messages.length <= 1 
     // check the ncr file
-    const handledByPRD = priorMessages.length === 0 ? await handlePRDWorkFlow(messages) : false;
-    // Only check NCR if PRD didn't already handle this run
-    const ncrContent = (!handledByPRD && priorMessages.length === 0) ? await LoadNCRfile() : null;
+    const handledByPRD = prdRequested ? await handlePRDWorkFlow(messages) : false;
+    const ncrContent = (!handledByPRD && ncrRequested) ? await LoadNCRfile() : null;
     if(ncrContent){
         const content = getBlueprintPrompt(ncrContent)
         messages.push({role: "user", content})
