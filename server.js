@@ -11,6 +11,7 @@ import boxen from 'boxen';
 import { LoadNCRfile } from './services/NCR-service.js';
 import { rl, sanitizeAssistantMessage, createChatCompletionWithFallback } from './services/aiClient.js'
 import { loadPRDFromArgs, extractUserStories } from './services/PRD-service.js';
+import { isSkipRequested, startSkipListener, stopSkipListener } from './services/Skip-service.js';
 
     
     const askQuestion = (query) => new Promise((resolve) => rl.question(query, resolve));
@@ -46,6 +47,10 @@ async function runMyAgent(messages, maxIterations = 50){
         iterationCount++
         if(iterationCount > maxIterations){
             return "Stopped: exceeded max iterations without finishing.";
+        }
+        // check if skip is requested
+        if(isSkipRequested()){
+            return "Stopped: skipped by user request.";
         }
         //     const response = await groq.chat.completions.create({
         //     model: 'llama-3.3-70b-versatile',
@@ -90,7 +95,9 @@ async function handlePRDWorkFlow(messages){
     const prdContent = await loadPRDFromArgs();
     if(!prdContent) return false;
     const spinner = ora('Extracting user stories from PRD...').start();
+    startSkipListener()
     const userStories = await extractUserStories(prdContent);
+    stopSkipListener()
     spinner.stop();
     if (!userStories) {
         console.log(chalk.red('Could not extract user stories — falling back to normal mode.'));
@@ -157,7 +164,9 @@ async function main() {
         messages.push({role: "user", content})
         isFirstTurn = false;
         const spinner = ora('Building project from NCR file...').start();
+        startSkipListener();
         const finalAnswer = await runMyAgent(messages);
+        stopSkipListener();
         spinner.stop();
         await saveSession(messages, getCurrentProjectPath());
         console.log('\n' + chalk.magenta.bold('Agent:'), chalk.green(finalAnswer));
