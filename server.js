@@ -12,6 +12,7 @@ import { LoadNCRfile } from './services/NCR-service.js';
 import { rl, sanitizeAssistantMessage, createChatCompletionWithFallback } from './services/aiClient.js'
 import { loadPRDFromArgs, extractUserStories } from './services/PRD-service.js';
 import { isSkipRequested, startSkipListener, stopSkipListener } from './services/Skip-service.js';
+import { promptBox } from './services/user-input.js';
 
     
     const askQuestion = (query) => new Promise((resolve) => rl.question(query, resolve));
@@ -175,12 +176,7 @@ async function main() {
         isFirstTurn = false;
     }
     while(true){
-        const userInput = await askQuestion(boxen(chalk.green.bold('How can I help you today? '), {
-            padding: 1,
-            margin: 1,
-            borderStyle: 'round',
-            borderColor: 'blue',
-        }));
+        const userInput = await askQuestion(promptBox('How can I help you today? '));
         if (userInput.trim().toLowerCase() === 'exit') {
             // save session
             await saveSession(messages, getCurrentProjectPath());
